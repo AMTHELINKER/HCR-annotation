@@ -1,24 +1,48 @@
 # =========================
-# Node.js
-# =========================
-node_modules/
-npm-debug.log*
-
-# =========================
 # Python
 # =========================
 __pycache__/
 *.py[cod]
+*.pyo
 *.egg-info/
+*.egg
+dist/
+build/
 .venv/
 venv/
 env/
+*.whl
 
 # =========================
-# MongoDB Data (gros fichiers)
+# MongoDB Data & Logs
 # =========================
 database/data/
-backend/ai/finetuning/
+database/logs/
+
+# =========================
+# AI / ML - Modèles & Checkpoints (trop lourds pour GitHub)
+# =========================
+backend/ai/finetuning/trocr_finetuned_hcr4/
+backend/ai/finetuning/checkpoints/
+backend/ai/finetuning/hcr4_dataset.zip
+backend/ai/finetuning/training.log
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.onnx
+*.h5
+
+# =========================
+# Dataset images (crops & images d'entraînement)
+# =========================
+backend/ai/finetuning/dataset/images/
+backend/ai/finetuning/dataset/crops/
+
+# =========================
+# Images de test à la racine
+# =========================
+4.jpeg
 
 # =========================
 # Environment & Secrets
@@ -26,9 +50,10 @@ backend/ai/finetuning/
 .env
 .env.local
 .env.*.local
+*.key
 
 # =========================
-# IDE / OS
+# IDE / Editeur / OS
 # =========================
 .vscode/
 .idea/
@@ -37,3 +62,16 @@ backend/ai/finetuning/
 *~
 .DS_Store
 Thumbs.db
+
+# =========================
+# Logs généraux
+# =========================
+*.log
+logs/
+
+# =========================
+# Archives
+# =========================
+*.zip
+*.tar.gz
+*.rar
