@@ -18,6 +18,7 @@ env/
 # MongoDB Data (gros fichiers)
 # =========================
 database/data/
+backend/ai/finetuning/
 
 # =========================
 # Environment & Secrets
