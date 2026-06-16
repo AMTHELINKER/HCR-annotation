@@ -27,7 +27,10 @@ ROBOFLOW_WORKSPACE = os.environ.get("ROBOFLOW_WORKSPACE", "deg")
 ROBOFLOW_WORKFLOW_ID = os.environ.get("ROBOFLOW_WORKFLOW_ID", "detect-count-and-visualize-2")
 
 # --- HTR (Handwritten Text Recognition) ---
-HTR_MODEL_NAME = os.environ.get("HTR_MODEL_NAME", "microsoft/trocr-base-handwritten")
+HTR_MODEL_NAME = os.environ.get(
+    "HTR_MODEL_NAME",
+    os.path.join(PROJECT_ROOT, "backend", "ai", "finetuning", "trocr_finetuned_hcr4")
+)
 
 # --- Seuils métier ---
 DEFAULT_CONFIDENCE_THRESHOLD = 0.4

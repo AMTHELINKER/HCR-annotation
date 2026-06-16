@@ -1,8 +1,8 @@
 # =============================================================
 # Dataset PyTorch pour le finetuning TrOCR — Ordonnances HCR4
 # =============================================================
-# Gère les annotations multi-lignes (une image = plusieurs
-# médicaments séparés par des retours à la ligne dans le CSV).
+# Chaque image (crop) contient UNE SEULE ligne de médicament.
+# Le CSV associe directement chaque fichier crop à son texte.
 # =============================================================
 
 import os
@@ -16,20 +16,17 @@ logger = logging.getLogger(__name__)
 
 
 class PrescriptionDataset(Dataset):
-    """Dataset PyTorch pour charger les images d'ordonnances et leurs transcriptions.
+    """Dataset PyTorch pour charger les crops d'ordonnances et leurs transcriptions.
 
-    Chaque échantillon correspond à une image d'ordonnance complète associée
-    à la liste complète des médicaments (multi-lignes dans le CSV, concaténés
-    avec un séparateur « | » pour le modèle seq2seq).
+    Chaque échantillon correspond à un crop d'une seule ligne de médicament,
+    associé à son texte transcrit (une seule chaîne de caractères par image).
     """
 
-    SEPARATOR = " | "  # Séparateur entre les médicaments dans la séquence cible
-
-    def __init__(self, csv_file, root_dir, processor, max_target_length=256):
+    def __init__(self, csv_file, root_dir, processor, max_target_length=128):
         """
         Args:
             csv_file (str): Chemin vers le fichier CSV contenant les annotations.
-            root_dir (str): Chemin vers le dossier contenant les images.
+            root_dir (str): Chemin vers le dossier contenant les images (crops).
             processor: Le processeur TrOCR (HuggingFace).
             max_target_length (int): Longueur maximale des séquences de texte.
         """
@@ -54,22 +51,10 @@ class PrescriptionDataset(Dataset):
     def __len__(self):
         return len(self.df)
 
-    def _normalize_text(self, raw_text: str) -> str:
-        """Normalise le texte multi-ligne du CSV en une séquence unique.
-
-        Remplace les retours à la ligne par le séparateur « | »,
-        supprime les espaces superflus et les lignes vides.
-        """
-        lines = [line.strip() for line in raw_text.strip().splitlines() if line.strip()]
-        return self.SEPARATOR.join(lines)
-
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
         file_name = str(row["file_name"])
-        raw_text = str(row["text"])
-
-        # Normaliser le texte cible
-        text = self._normalize_text(raw_text)
+        text = str(row["text"]).strip()
 
         # Chargement de l'image
         image_path = os.path.join(self.root_dir, file_name)

@@ -98,7 +98,12 @@ def clean_transcription(text: str) -> str:
     Enchaîne dans l'ordre :
         1. Suppression des artefacts
         2. Normalisation des espaces
-        3. Normalisation médicale
+    
+    NOTE : La normalisation médicale (expansion des abréviations) est
+    volontairement RETIRÉE du pipeline. La base de référence utilise les
+    mêmes abréviations (CP, SP, GEL, etc.) que les prescriptions manuscrites.
+    L'expansion (cp→comprimé) dégradait le matching. Le matching_service
+    gère maintenant les variantes d'abréviations de manière intelligente.
     
     Args:
         text: Texte brut issu du modèle HTR.
@@ -110,5 +115,5 @@ def clean_transcription(text: str) -> str:
         return ""
     text = remove_artifacts(text)
     text = clean_whitespace(text)
-    text = normalize_medical_text(text)
+    # normalize_medical_text(text) — désactivé, voir NOTE ci-dessus
     return text
