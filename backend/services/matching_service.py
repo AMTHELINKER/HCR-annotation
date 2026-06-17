@@ -59,6 +59,10 @@ _ABBREV_TO_REF = {
     "inj":      ["INJ", "INJECT"],
     "inject":   ["INJ", "INJECT"],
     "injection":["INJ", "INJECT"],
+    
+    # Noms de molécules fréquents abrégés
+    "amox":     ["AMOXICILLINE", "AMOXICILL"],
+    "carbo":    ["CARBOCISTEINE"],
 
     "amp":      ["AMP", "AMPOULE"],
     "ampoule":  ["AMP"],
@@ -180,6 +184,135 @@ def _extract_dosage(text: str) -> str:
     return " ".join(dosages)
 
 
+def _parse_dosage_mg(dosage_str: str) -> float | None:
+    """Convertit une chaîne de dosage en milligrammes pour comparaison.
+    
+    Exemples :
+        '500MG'   → 500.0
+        '1G'      → 1000.0
+        '0,5G'    → 500.0
+        '250MCG'  → 0.25
+        '100MG 5ML' → 100.0  (premier dosage en MG/G)
+    
+    Returns:
+        Dosage en MG, ou None si aucun dosage interprétable.
+    """
+    if not dosage_str:
+        return None
+    
+    # Conversions : unité → facteur vers MG
+    _UNIT_TO_MG = {
+        "MG":  1.0,
+        "G":   1000.0,
+        "MCG": 0.001,
+        "UI":  None,   # non convertible en MG
+        "IU":  None,
+        "ML":  None,
+        "%":   None,
+    }
+    
+    # Chercher tous les dosages avec unité
+    matches = re.findall(r"(\d+[.,]?\d*)\s*(MG|G|MCG|UI|IU|ML|%)", dosage_str)
+    
+    for value_str, unit in matches:
+        factor = _UNIT_TO_MG.get(unit)
+        if factor is not None:
+            try:
+                value = float(value_str.replace(",", "."))
+                return value * factor
+            except ValueError:
+                continue
+    
+    return None
+
+
+def _disambiguate_by_dosage(
+    query_norm: str,
+    best_match: str,
+    best_score: float,
+    index: "MedsIndex",
+) -> tuple[str, float]:
+    """Désambiguïse par dosage parmi les références du même nom commercial.
+    
+    Quand le best_match actuel a le bon nom, cette fonction cherche parmi
+    toutes les entrées partageant ce même nom commercial celle dont le
+    dosage est le plus proche du dosage extrait de la requête.
+    
+    Cela résout le cas :
+        Query     : 'DOLIPRANE 500MG'
+        best_match: 'DOLIPRANE 1G CP B/8'       ← même nom, mauvais dosage
+        résultat  : 'DOLIPRANE 500MG CP SEC B/16' ← même nom, bon dosage
+    
+    Args:
+        query_norm: Requête normalisée.
+        best_match: Meilleur candidat actuel (référence originale).
+        best_score: Score actuel du meilleur candidat.
+        index:      Index pré-calculé.
+    
+    Returns:
+        (best_match, best_score) éventuellement mis à jour.
+    """
+    query_dosage_str = _extract_dosage(query_norm)
+    query_mg = _parse_dosage_mg(query_dosage_str)
+    
+    # Pas de dosage dans la requête → rien à désambiguïser
+    if query_mg is None:
+        return best_match, best_score
+    
+    # Extraire le nom commercial du best_match actuel
+    best_norm = _normalize(best_match)
+    best_name = _extract_name_token(best_norm)
+    
+    if not best_name:
+        return best_match, best_score
+    
+    # Trouver le premier token significatif (nom commercial)
+    best_first_token = best_name.split()[0] if best_name.split() else ""
+    if not best_first_token or len(best_first_token) < 2:
+        return best_match, best_score
+    
+    # Collecter toutes les références partageant ce nom commercial
+    siblings = []
+    for idx, norm in enumerate(index.normalized):
+        ref_name = _extract_name_token(norm)
+        ref_tokens = ref_name.split()
+        if ref_tokens and ref_tokens[0] == best_first_token:
+            ref_dosage_str = _extract_dosage(norm)
+            ref_mg = _parse_dosage_mg(ref_dosage_str)
+            siblings.append((idx, ref_mg, ref_dosage_str))
+    
+    # Si un seul sibling (ou aucun avec dosage parsable), on garde l'actuel
+    siblings_with_dosage = [(idx, mg, ds) for idx, mg, ds in siblings if mg is not None]
+    if not siblings_with_dosage:
+        return best_match, best_score
+    
+    # Trouver le sibling dont le dosage est le plus proche
+    closest_idx = None
+    closest_distance = float("inf")
+    
+    for idx, mg, _ds in siblings_with_dosage:
+        distance = abs(mg - query_mg)
+        if distance < closest_distance:
+            closest_distance = distance
+            closest_idx = idx
+    
+    if closest_idx is not None:
+        new_match = index.originals[closest_idx]
+        # Si on a trouvé un meilleur dosage (et c'est bien le même nom),
+        # on le retourne avec un léger bonus de score
+        new_norm = index.normalized[closest_idx]
+        new_name = _extract_name_token(new_norm)
+        new_first = new_name.split()[0] if new_name.split() else ""
+        
+        if new_first == best_first_token:
+            # Bonus pour concordance de dosage (jusqu'à +5%)
+            dosage_bonus = 0.05 if closest_distance == 0 else max(0, 0.03 * (1 - closest_distance / max(query_mg, 1)))
+            new_score = min(best_score + dosage_bonus, 1.0)
+            return new_match, round(new_score, 4)
+    
+    return best_match, best_score
+
+
 def _expand_abbreviations(text: str) -> list[str]:
     """Génère toutes les variantes possibles d'un texte en
     remplaçant les abréviations manuscrites par les formes de la base.
@@ -237,6 +370,9 @@ class MedsIndex:
         for orig, norm in zip(reference_list, self.normalized):
             if norm not in self.norm_to_orig:
                 self.norm_to_orig[norm] = orig
+                
+        # Noms extraits purs pour fuzzy search globale
+        self.names_only = [_extract_name_token(norm) for norm in self.normalized]
         
         # Index par premier token (nom du médicament) pour recherche rapide
         self.name_index: dict[str, list[int]] = {}
@@ -460,6 +596,33 @@ def fuzzy_match(query: str, reference_list: list[str]) -> tuple[str, float]:
                     best_score = score
                     best_match = index.originals[ref_idx]
 
+    # --- Stratégie 3b : Recherche floue globale sur le nom ---
+    # Sauvetage si le début du mot était trop erroné pour get_candidates_by_prefix
+    # (ex: Spierfon vs Spasfon -> SPI vs SPA)
+    if query_name and best_score < 0.75:
+        global_results = process.extract(
+            query_name,
+            index.names_only,
+            scorer=fuzz.ratio,
+            limit=5
+        )
+        for match_name, score_pct, match_idx in global_results:
+            name_score = score_pct / 100.0
+            ref_norm = index.normalized[match_idx]
+            ref_orig = index.originals[match_idx]
+            
+            # Bonus dosage
+            ref_dosage = _extract_dosage(ref_norm)
+            dosage_bonus = 0.0
+            if query_dosage and ref_dosage:
+                dosage_sim = fuzz.ratio(query_dosage, ref_dosage) / 100.0
+                dosage_bonus = dosage_sim * 0.15
+                
+            combined = min(name_score * 0.85 + dosage_bonus, 1.0)
+            if combined > best_score:
+                best_score = combined
+                best_match = ref_orig
+
     # --- Stratégie 4 : token_set_ratio global (insensible à l'ordre/tokens manquants) ---
     if best_score < 0.7:
         result = process.extractOne(
@@ -488,6 +651,15 @@ def fuzzy_match(query: str, reference_list: list[str]) -> tuple[str, float]:
             if score > best_score:
                 best_score = score
                 best_match = index.originals[match_idx]
+
+    # --- Stratégie 6 : Désambiguïsation par dosage ---
+    # Quand on a un match sur le nom, on re-cherche parmi les
+    # références du même nom commercial celle avec le dosage
+    # le plus proche de la requête.
+    if best_match != "Aucun résultat trouvé" and best_score > 0:
+        best_match, best_score = _disambiguate_by_dosage(
+            query_norm, best_match, best_score, index
+        )
 
     # --- Seuil minimum ---
     if best_score < MATCHING_CUTOFF:
