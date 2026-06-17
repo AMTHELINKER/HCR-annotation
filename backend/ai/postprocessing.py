@@ -115,5 +115,11 @@ def clean_transcription(text: str) -> str:
         return ""
     text = remove_artifacts(text)
     text = clean_whitespace(text)
+    
+    # Correction orthographique NLP (SymSpell / Rapidfuzz)
+    from backend.ai.spellchecker import MedicalSpellChecker
+    spell_checker = MedicalSpellChecker()
+    text = spell_checker.correct_text(text)
+    
     # normalize_medical_text(text) — désactivé, voir NOTE ci-dessus
     return text
