@@ -201,17 +201,21 @@ def render(config: dict):
                 valid_preds = detection_service.filter_predictions(parsed["predictions"], confidence)
 
                 if valid_preds:
-                    with st.spinner(f"Etape 2/2 : Transcription HTR-VT de {len(valid_preds)} lignes..."):
-                        try:
-                            for idx, pred in enumerate(valid_preds):
-                                crop = image_service.crop_prediction(uploaded_image, pred)
-                                try:
-                                    st.session_state.htr_results[idx] = htr_service.transcribe(crop)
-                                except Exception as htr_err:
-                                    st.session_state.htr_results[idx] = f"Erreur HTR: {htr_err}"
-                            st.toast("Pipeline complet execute avec succes !")
-                        except Exception as e:
-                            st.error(f"Impossible de charger HTR-VT : {e}")
+                    avg_conf = sum(p.get("confidence", 0) for p in valid_preds) / len(valid_preds) if valid_preds else 0
+                    if avg_conf < 0.80:
+                        st.warning(f"La confiance de détection moyenne ({avg_conf:.1%}) est inférieure à 80%. L'extraction a été annulée.")
+                    else:
+                        with st.spinner(f"Etape 2/2 : Transcription HTR-VT de {len(valid_preds)} lignes..."):
+                            try:
+                                for idx, pred in enumerate(valid_preds):
+                                    crop = image_service.crop_prediction(uploaded_image, pred)
+                                    try:
+                                        st.session_state.htr_results[idx] = htr_service.transcribe(crop)
+                                    except Exception as htr_err:
+                                        st.session_state.htr_results[idx] = f"Erreur HTR: {htr_err}"
+                                st.toast("Pipeline complet execute avec succes !")
+                            except Exception as e:
+                                st.error(f"Impossible de charger HTR-VT : {e}")
 
         # --- Render results ---
         if st.session_state.raw_result is not None and st.session_state.source_img is not None:
@@ -252,7 +256,11 @@ def render(config: dict):
 
     # --- Galerie de Transcription & Matching ---
     if st.session_state.raw_result is not None and st.session_state.source_img is not None:
-        _render_gallery(confidence, enable_htr, meds_db)
+        parsed = detection_service.parse_response(st.session_state.raw_result)
+        valid_preds = detection_service.filter_predictions(parsed["predictions"], confidence)
+        avg_conf = sum(p.get("confidence", 0) for p in valid_preds) / len(valid_preds) if valid_preds else 0
+        if avg_conf >= 0.80:
+            _render_gallery(confidence, enable_htr, meds_db)
 
 
 def _render_gallery(confidence: float, enable_htr: bool, meds_db: list):

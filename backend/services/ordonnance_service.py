@@ -45,6 +45,10 @@ def run_full_pipeline(image: Image.Image, raw_result: dict,
         parsed["predictions"], confidence_threshold
     )
 
+    avg_conf = sum(p.get("confidence", 0) for p in valid_preds) / len(valid_preds) if valid_preds else 0
+    if avg_conf < 0.80:
+        return []  # Extraction annulée si la confiance moyenne est < 80%
+
     results = []
     for idx, pred in enumerate(valid_preds):
         # Découpe
