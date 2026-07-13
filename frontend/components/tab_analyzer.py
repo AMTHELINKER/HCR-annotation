@@ -114,31 +114,10 @@ def render(config: dict):
         st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
         st.markdown("<h4 style='font-family: Outfit, sans-serif; margin-top: 0;'>Image Source</h4>", unsafe_allow_html=True)
 
-        input_type = st.radio("Méthode d'entrée", ["Téléverser une ordonnance", "Tester avec une image d'exemple"])
         uploaded_image = None
-
-        if input_type == "Téléverser une ordonnance":
-            uploaded_file = st.file_uploader("Téléversez l'ordonnance (PNG, JPG, JPEG)...", type=["png", "jpg", "jpeg", "webp"])
-            if uploaded_file:
-                uploaded_image = Image.open(uploaded_file).convert("RGB")
-        else:
-            # Chercher les images dans data/samples/ et à la racine du projet
-            search_dirs = [SAMPLES_DIR, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))]
-            local_samples = {}
-            for d in search_dirs:
-                if os.path.isdir(d):
-                    for f in sorted(os.listdir(d)):
-                        if f.lower().endswith((".jpeg", ".jpg", ".png", ".webp")):
-                            local_samples[f] = os.path.join(d, f)
-
-            if local_samples:
-                selected = st.selectbox("Selectionnez un exemple :", list(local_samples.keys()))
-                try:
-                    uploaded_image = Image.open(local_samples[selected]).convert("RGB")
-                except Exception as e:
-                    st.error(f"Erreur image exemple : {e}")
-            else:
-                st.warning("Aucune image d'exemple trouvee.")
+        uploaded_file = st.file_uploader("Téléversez l'ordonnance (PNG, JPG, JPEG)...", type=["png", "jpg", "jpeg", "webp"])
+        if uploaded_file:
+            uploaded_image = Image.open(uploaded_file).convert("RGB")
 
         if uploaded_image:
             st.image(uploaded_image, caption="Ordonnance à analyser", use_container_width=True)
@@ -166,9 +145,9 @@ def render(config: dict):
 
         # Bouton d'analyse : visible uniquement si la qualité est OK
         if uploaded_image and quality_passed:
-            analyze_button = st.button("Lancer le pipeline complet", use_container_width=True, type="primary")
+            analyze_button = st.button("Analyser", use_container_width=True, type="primary")
         elif not uploaded_image:
-            st.info("Veuillez téléverser une image ou choisir un exemple pour démarrer.")
+            st.info("Veuillez téléverser une image pour démarrer.")
             analyze_button = False
         else:
             analyze_button = False
@@ -202,8 +181,8 @@ def render(config: dict):
 
                 if valid_preds:
                     avg_conf = sum(p.get("confidence", 0) for p in valid_preds) / len(valid_preds) if valid_preds else 0
-                    if avg_conf < 0.80:
-                        st.warning(f"La confiance de détection moyenne ({avg_conf:.1%}) est inférieure à 80%. L'extraction a été annulée.")
+                    if avg_conf < 0.75:
+                        st.warning(f"La confiance de détection moyenne ({avg_conf:.1%}) est inférieure à 75%. L'extraction a été annulée.")
                     else:
                         with st.spinner(f"Etape 2/2 : Transcription HTR-VT de {len(valid_preds)} lignes..."):
                             try:
@@ -227,16 +206,19 @@ def render(config: dict):
             )
             valid_preds = detection_service.filter_predictions(predictions, confidence)
             avg_conf = sum(p.get("confidence", 0) for p in valid_preds) / len(valid_preds) if valid_preds else 0
+            
+            color_hex = "#556B2F" if avg_conf >= 0.75 else "red"
+            border_color = "rgba(85,107,47,0.2)" if avg_conf >= 0.75 else "rgba(239,68,68,0.2)"
 
             st.markdown(f"""
             <div class='metric-container'>
-                <div class='metric-badge'>
-                    <div class='metric-value'>{detected_count}</div>
-                    <div class='metric-label'>Lignes Détectées</div>
+                <div class='metric-badge' style='border-color: {border_color};'>
+                    <div class='metric-value' style='-webkit-text-fill-color: {color_hex}; background: none;'>{detected_count}</div>
+                    <div class='metric-label' style='color: {color_hex};'>Lignes Détectées</div>
                 </div>
-                <div class='metric-badge emerald'>
-                    <div class='metric-value'>{avg_conf:.1%}</div>
-                    <div class='metric-label'>Confiance Détection</div>
+                <div class='metric-badge emerald' style='border-color: {border_color};'>
+                    <div class='metric-value' style='-webkit-text-fill-color: {color_hex}; background: none;'>{avg_conf:.1%}</div>
+                    <div class='metric-label' style='color: {color_hex};'>Confiance Détection</div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -259,7 +241,7 @@ def render(config: dict):
         parsed = detection_service.parse_response(st.session_state.raw_result)
         valid_preds = detection_service.filter_predictions(parsed["predictions"], confidence)
         avg_conf = sum(p.get("confidence", 0) for p in valid_preds) / len(valid_preds) if valid_preds else 0
-        if avg_conf >= 0.80:
+        if avg_conf >= 0.75:
             _render_gallery(confidence, enable_htr, meds_db)
 
 

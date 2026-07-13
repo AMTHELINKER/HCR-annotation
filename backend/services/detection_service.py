@@ -36,7 +36,7 @@ def detect_lines(image: Image.Image, use_cache: bool = True) -> dict:
         "use_cache": use_cache,
     }
 
-    resp = requests.post(workflow_url, json=payload, timeout=60)
+    resp = requests.post(workflow_url, json=payload, timeout=5)
     resp.raise_for_status()
     return resp.json()
 

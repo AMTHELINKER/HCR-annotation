@@ -1,5 +1,5 @@
 import streamlit as st
-from backend.db.repositories import OrdonnanceRepo
+from backend.db.repositories import OrdonnanceRepo, MedicamentRepo
 from backend.services.matching_service import load_reference_names
 from backend.config import DEFAULT_QUALITY_THRESHOLD
 from frontend.components import tab_analyzer
@@ -12,26 +12,13 @@ def render():
     with tab1:
         st.markdown("### Nouvelle Ordonnance")
         
-        # Configuration avancée déplacée hors de la sidebar
-        with st.expander("⚙️ Configuration avancée de l'IA (Roboflow & HTR)"):
-            c1, c2 = st.columns(2)
-            with c1:
-                st.markdown("#### Détection")
-                api_url = st.text_input("URL de l'API", value="https://serverless.roboflow.com")
-                workspace_name = st.text_input("Workspace", value="deg")
-                workflow_id = st.text_input("ID du Workflow", value="detect-count-and-visualize-2")
-                use_cache = st.toggle("Activer le Cache", value=True)
-            with c2:
-                st.markdown("#### HTR & Matching")
-                enable_htr = st.toggle("Activer HTR-VT", value=True)
-                confidence_threshold = st.slider("Seuil Confiance", 0.0, 1.0, 0.4, 0.05)
-                st.markdown("#### Qualité Image")
-                quality_threshold = st.slider(
-                    "Seuil Qualité Image",
-                    min_value=0, max_value=100,
-                    value=DEFAULT_QUALITY_THRESHOLD, step=5,
-                    help="Score minimum (0-100) que l'image doit atteindre pour poursuivre le pipeline."
-                )
+        api_url = "https://serverless.roboflow.com"
+        workspace_name = "deg"
+        workflow_id = "detect-count-and-visualize-2"
+        use_cache = True
+        enable_htr = True
+        confidence_threshold = 0.4
+        quality_threshold = DEFAULT_QUALITY_THRESHOLD
                 
         meds_db = load_reference_names()
         
@@ -58,5 +45,16 @@ def render():
                 with st.expander(f"Ordonnance du {ordo['dateCreation'].strftime('%d/%m/%Y')} - Statut: {ordo['statut'].upper()}"):
                     lignes = ordo.get("lignes", [])
                     st.write(f"**Nombre de médicaments prescrits :** {len(lignes)}")
+                    if lignes:
+                        st.markdown("#### Médicaments :")
+                        for ligne in lignes:
+                            med_id = ligne.get("medicamentId")
+                            if med_id:
+                                med = MedicamentRepo.find_by_id(med_id)
+                                nom_med = med["nom"] if med else "Inconnu"
+                            else:
+                                nom_med = ligne.get("medicament", "Inconnu")
+                            
+                            st.markdown(f"- **{nom_med}**")
         else:
             st.info("Vous n'avez pas encore numérisé d'ordonnances.")
